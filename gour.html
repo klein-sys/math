@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Derivative Quest</title>
+<style>
+:root{--bg:#eef3fb;--fg:#0c1b33;--cd:#fff;--mu:#5b6b86;--ac:#0a6cff;--ok:#0f9d58;--bd:#e5334b;--ln:#d3ddee;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0b1322;--fg:#e8efff;--cd:#14203a;--mu:#92a3c4;--ac:#5aa2ff;--ok:#4ade80;--bd:#ff7088;--ln:#26365a;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0b1322;--fg:#e8efff;--cd:#14203a;--mu:#92a3c4;--ac:#5aa2ff;--ok:#4ade80;--bd:#ff7088;--ln:#26365a;color-scheme:dark}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-user-select:none;user-select:none}
+#wrap{max-width:560px;margin:0 auto;padding:12px}
+h1{margin:4px 0;font-size:26px;letter-spacing:-.02em}
+.mu{color:var(--mu)}.ok{color:var(--ok)}.bad{color:var(--bd)}
+.box{background:var(--cd);border:1px solid var(--ln);border-radius:12px;padding:10px 12px;margin:8px 0}
+.row{display:flex;justify-content:space-between}
+.bar{height:14px;background:var(--ln);border-radius:8px;overflow:hidden;margin:6px 0}
+.bar i{display:block;height:100%;width:0;background:var(--ac)}
+.r i{background:var(--bd)}.g i{background:var(--ok)}
+.big{font-size:52px;text-align:center;line-height:1.2}
+.sh{animation:sh .3s}
+@keyframes sh{25%{transform:translateX(-10px)}75%{transform:translateX(10px)}}
+canvas{width:100%;aspect-ratio:336/252;display:block;box-sizing:border-box;border-radius:12px;border:1px solid var(--ln);touch-action:none}
+.pad{display:grid;grid-template-columns:repeat(3,64px);grid-template-rows:repeat(2,56px);gap:6px;justify-content:center;margin:10px 0}
+.pad button{touch-action:none;font-size:22px;border-radius:12px;border:1px solid var(--ln);background:var(--cd);color:var(--fg)}
+button{font:inherit}
+.btn{background:var(--ac);color:#fff;border:0;border-radius:10px;padding:11px 16px;font-weight:600;cursor:pointer;margin:4px 6px 4px 0}
+.btn.alt{background:var(--cd);color:var(--fg);border:1px solid var(--ln)}
+.btn:disabled{opacity:.45}
+.wide{width:100%;font-size:22px;padding:16px;margin:4px 0}
+input[type=range]{width:100%;margin:10px 0}
+b{font-variant-numeric:tabular-nums}
+input[type=text]{-webkit-user-select:text;user-select:text;font:inherit;padding:8px;border-radius:8px;border:1px solid var(--ln);background:var(--cd);color:var(--fg);box-sizing:border-box}</style></head>
+<body><div id="wrap"><h1>🐉 Derivative Quest</h1><div class="box" id="hud"></div>
+<div id="world"><canvas id="c"></canvas>
+<div class="pad"><span></span><button data-k="u">▲</button><span></span><button data-k="l">◀</button><button data-k="d">▼</button><button data-k="r">▶</button></div>
+<button class="btn alt" id="nw">🔄 New game</button><button class="btn alt" id="cs">👥 Cast</button><button class="btn alt" id="mm">🔬 Math view: off</button></div>
+<div id="ov" style="display:none"></div></div>
+<script>
+const $=i=>document.getElementById(i),Dm=x=>x*x*(10-x),DMAX=Dm(20/3),TS=28,CW=336,CH=252;
+const M=["TTTTTTTTTTTT","T..T....T.LT","T..T.T.....T","T....T.TT..T","T..T.....T.T","T.....T....T","T..T.T...GGT","T....T..T.GT","TTTTTTTTTTTT"];
+const EN={slime:{k:"slime",n:"Slime",e:"🟢",hp:120,atk:8,xp:50,g:10},golem:{k:"golem",n:"Stone Golem",e:"🗿",hp:450,atk:18,xp:150,g:60},dragon:{k:"dragon",n:"Ember Dragon",e:"🐉",hp:900,atk:28,xp:0,g:0}};
+const cv=$("c"),g=cv.getContext("2d"),dpr=devicePixelRatio||1;cv.width=CW*dpr;cv.height=CH*dpr;
+let S,ents,mode="world",keys={},math=false,C;
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const ROLES=["Main character (hero)","Village Elder (NPC)","Blacksmith (NPC)","Stone Golem (mini-boss)","Ember Dragon (final boss)"],DEF=[["Hero","🦸"],["Elder","👴"],["Smith","⚒️"],["Golem","🗿"],["Dragon","🐉"]];
+function loadCast(){let a=null;try{a=JSON.parse(localStorage.getItem("dq2c"))}catch(e){}C=DEF.map((d,i)=>({n:(a&&a[i]&&a[i].n)||d[0],e:(a&&a[i]&&a[i].e)||d[1]}));EN.golem.n=C[3].n+" the Golem";EN.golem.e=C[3].e;EN.dragon.n=C[4].n+" the Dragon";EN.dragon.e=C[4].e}
+const maxHP=()=>60+15*S.lvl,pw=()=>Dm(S.b)*(.5+.1*S.lvl),need=()=>S.lvl*60;
+const save=()=>{try{localStorage.setItem("dq2",JSON.stringify(S))}catch(e){}};
+function fresh(){S={x:1.5*TS,y:3.5*TS,lvl:1,xp:0,hp:75,gold:0,pot:2,b:5,f:{talk:0,golem:0,dragon:0}}}
+function mk(){ents=[{k:"elder",t:[2,1],e:C[1].e,nm:C[1].n},{k:"smith",t:[1,5],e:C[2].e,nm:C[2].n},{k:"slime",t:[4,2],e:"🟢"},{k:"slime",t:[6,3],e:"🟢"},{k:"slime",t:[7,5],e:"🟢"},{k:"slime",t:[5,4],e:"🟢"},{k:"golem",t:[9,6],e:C[3].e,nm:C[3].n},{k:"dragon",t:[10,1],e:C[4].e,nm:C[4].n}].map(e=>({...e,x:(e.t[0]+.5)*TS,y:(e.t[1]+.5)*TS,dead:(e.k=='golem'&&S.f.golem)||(e.k=='dragon'&&S.f.dragon)?1e9:0,in:0}))}
+try{S=JSON.parse(localStorage.getItem("dq2"))}catch(e){}
+if(!S||!S.f)fresh();loadCast();mk();
+function quest(){const f=S.f;return!f.talk?"Talk to the Elder (north-west)":S.lvl<3?"Train on forest slimes to reach Lv 3":!f.golem?"Defeat the Stone Golem (cave, south-east)":S.lvl<5?"Reach Lv 5, then visit the Smith":"Slay the Ember Dragon (north-east lair)"}
+function hud(){$("hud").innerHTML=`Lv <b>${S.lvl}</b> · ❤️ <b>${S.hp}/${maxHP()}</b> · XP <b>${S.lvl>=8?"MAX":S.xp+"/"+need()}</b> · 💰 <b>${S.gold}</b> · 🧪 <b>${S.pot}</b><br><span class="mu">🎯 ${quest()}</span>`}
+function show(h){$("ov").innerHTML=h;$("ov").style.display="block";$("world").style.display="none";mode="ov"}
+function hide(){$("mm").textContent="🔬 Math view: "+(math?"on":"off");$("ov").style.display="none";$("world").style.display="block";mode="world";hud();save()}
+function say(lines,cb,who){let i=0;const f=()=>{show(`<div class="box">${who?"<b>"+who+":</b> ":""}${lines[i]}</div><button class="btn" id="nx">${i<lines.length-1?"Next ▶":"OK"}</button>`);$("nx").onclick=()=>{if(++i<lines.length)f();else{hide();cb&&cb()}}};f()}
+function forge(){S.hp=maxHP();hud();
+ show(`<div class="box"><b>⚒️ The Smith’s Forge</b><br><span class="mu">Split 10 points between ⚔️ Strength and 🔮 Focus. Your HP is restored.</span></div><div class="box"><div class="row"><span>⚔️ STR <b id="a"></b></span><span>🔮 FOC <b id="b"></b></span></div><input id="sl" type="range" min="0" max="10" step="0.5" value="${S.b}"><div class="bar"><i id="pw"></i></div><div id="pt"></div><div id="mt" class="mu"></div></div><button class="btn alt" id="mv">🔬 Math view: ${math?"on":"off"}</button><button class="btn alt" id="by">🧪 Buy potion (20g)</button><button class="btn" id="dn">Done</button><div class="mu" id="ms"></div>`);
+ const sl=$("sl"),u=()=>{S.b=+sl.value;$("a").textContent=S.b;$("b").textContent=10-S.b;$("pw").style.width=Dm(S.b)/DMAX*100+"%";$("pt").innerHTML=`Strike power: <b>${pw().toFixed(0)}</b>`;
+  if(math){const d=20*S.b-3*S.b*S.b;$("mt").innerHTML=`D(x) = x²(10 − x), D′(x) = 20x − 3x² = <b>${d.toFixed(1)}</b> ${Math.abs(d)<8?"(almost flat!)":""}`}};
+ sl.oninput=u;u();$("mv").onclick=()=>{math=!math;forge()};$("by").onclick=()=>{if(S.gold>=20){S.gold-=20;S.pot++;$("ms").textContent="Potion bought! You have "+S.pot+"."}else $("ms").textContent="Not enough gold."};$("dn").onclick=hide}
+function trigger(e){const f=S.f;
+ if(e.k=="elder")say(f.talk?["Hero, the dragon’s lair is in the north-east. Stay strong, and keep your build sharp!"]:["Hero! The Ember Dragon burned our fields and stole our harvest.","Its lair is sealed by the Stone Golem’s magic in the cave to the south-east.","Train on the forest slimes, and visit the Smith to forge your build.","You need level 3 for the Golem, and level 5 for the dragon. Go!"],()=>{f.talk=1;save()},C[1].e+" "+C[1].n);
+ else if(e.k=="smith")say(["Welcome, hero! Your power depends on how you split your points between Strength and Focus.","Too much of one and the other holds you back. There’s a perfect split. Find where the power curve peaks!"],forge,C[2].e+" "+C[2].n);
+ else if(e.k=="slime")battle(EN.slime,e);
+ else if(e.k=="golem")S.lvl<3?say(["A Stone Golem blocks the cave. You are too weak (need level 3)."]):battle(EN.golem,e);
+ else if(e.k=="dragon")!f.golem?say(["The lair is sealed by the Golem’s magic. Defeat it first!"]):S.lvl<5?say(["The dragon’s heat pushes you back. Reach level 5 first!"]):battle(EN.dragon,e)}
+function battle(d,ent){let bhp=d.hp,hhp=S.hp,t=0,run=false,raf,last,R=0,T=4,K=2,atk=d.atk,fs=[],enr=0;
+ show(`<div class="box"><div class="big" id="boss">${d.e}</div><div class="bar r"><i id="bh"></i></div><div class="mu">${d.n} · <b id="bt"></b> HP</div><div class="big" id="hero">${C[0].e}</div><div class="bar g"><i id="hh"></i></div><div class="mu">${C[0].n} (Lv ${S.lvl}) · <b id="ht"></b> HP</div></div><div class="box">Strike when the gauge fills <b>fastest</b>!<div class="bar"><i id="ga"></i></div><div id="mt" class="mu"></div></div><button class="btn wide" id="st">STRIKE!</button><button class="btn alt" id="po">🧪 Potion (${S.pot})</button><div class="box" id="lg">A ${d.n} appears!</div>`);
+ const st=$("st"),po=$("po"),lg=$("lg"),P=pw();
+ const bars=()=>{$("bh").style.width=Math.max(0,bhp/d.hp*100)+"%";$("hh").style.width=Math.max(0,hhp/maxHP()*100)+"%";$("bt").textContent=Math.max(0,bhp);$("ht").textContent=Math.max(0,hhp)};
+ const shake=n=>{const e=$(n);e.classList.remove("sh");void e.offsetWidth;e.classList.add("sh")};
+ const done=(h,cb)=>{lg.innerHTML=h+`<br><button class="btn" id="ct">Continue</button>`;$("ct").onclick=cb};
+ function win(){S.hp=hhp;S.xp+=d.xp;S.gold+=d.g;let m=`<b class="ok">🏆 ${d.n} defeated!</b> +${d.xp} XP, +${d.g}g`;
+  while(S.lvl<8&&S.xp>=need()){S.xp-=need();S.lvl++;m+=`<br>🎉 Level up! Lv ${S.lvl}: more HP and power ×${(.5+.1*S.lvl).toFixed(1)}`}
+  if(d.k=="slime")ent.dead=10;if(d.k=="golem"){S.f.golem=1;ent.dead=1e9;m+="<br>The cave is open and the lair’s seal breaks!"}
+  if(d.k=="dragon"){S.f.dragon=1;return done(m,ending)}done(m,hide)}
+ function lose(){S.hp=maxHP();S.gold=Math.floor(S.gold/2);S.x=1.5*TS;S.y=3.5*TS;done(`<b class="bad">💀 Defeated…</b> You wake up in the village and lost half your gold.`,hide)}
+ function round(){t=0;run=true;st.disabled=false;po.disabled=S.pot<=0;last=performance.now();raf=requestAnimationFrame(tick)}
+ function tick(n){if(!run)return;t+=Math.min(.05,(n-last)/1e3);last=n;R=1/(1+Math.exp(-K*(t-T/2)));$("ga").style.width=R*100+"%";
+  if(math)$("mt").innerHTML=`R′(t) = <b>${(K*R*(1-R)).toFixed(2)}</b> (max ${(K/4).toFixed(2)})`;if(t>=T)hit(1);else raf=requestAnimationFrame(tick)}
+ function eturn(){setTimeout(()=>{hhp-=atk;bars();shake("hero");lg.innerHTML+=`<br>${d.e} hits you for ${atk}!`;if(hhp<=0)return lose();setTimeout(round,700)},800)}
+ function hit(late){if(!run)return;run=false;cancelAnimationFrame(raf);st.disabled=po.disabled=true;
+  const f=late?0:4*R*(1-R),m=late?.5:.5+1.5*f,dm=Math.round(P*m);bhp-=dm;bars();shake("boss");
+  lg.innerHTML=`${late?"Too late!":f>.9?"🔥 PERFECT!":f>.6?"Nice hit!":"Weak hit…"} ×${m.toFixed(2)} → <b>${dm}</b> damage`;
+  if(bhp<=0)return win();
+  if(d.k=="dragon"&&!enr&&bhp<=d.hp/2){enr=1;atk+=10;T=3;K=8/3;lg.innerHTML+="<br>🔥 The dragon is ENRAGED! Faster gauge, harder hits!"}
+  eturn()}
+ st.onclick=()=>hit(0);
+ po.onclick=()=>{if(!run||S.pot<=0)return;run=false;cancelAnimationFrame(raf);st.disabled=po.disabled=true;S.pot--;hhp=Math.min(maxHP(),hhp+40);bars();lg.innerHTML="🧪 You heal 40 HP.";eturn()}
+ bars();setTimeout(round,600)}
+function ending(){const f=Dm(S.b)/DMAX*100;show(`<div class="box"><div class="big">🏆</div><b>The Ember Dragon falls!</b><br>The fields grow green again and the village celebrates ${C[0].n}’s name. Quest complete.<br>Cast: ${C.map(c=>c.e+" "+c.n).join(", ")}.<br><br>Final build: STR ${S.b} / FOC ${10-S.b} (${f.toFixed(0)}% of max power). The best build is where D′(x) = 20x − 3x² = 0, at x = 20/3, and D″ &lt; 0 confirms it’s a maximum. You reached level ${S.lvl}.</div><button class="btn" id="pa">Play again</button>`);$("pa").onclick=()=>{fresh();mk();hide()}}
+function castEditor(cb){show(`<div class="box"><b>👥 Cast your group!</b><br><span class="mu">Give each member a character. Type a name and an optional emoji.</span></div>`+C.map((c,i)=>`<div class="box"><div class="mu">${ROLES[i]}</div><div class="row"><input type="text" id="n${i}" maxlength="14" value="${c.n}" style="width:68%"><input type="text" id="e${i}" value="${c.e}" style="width:25%;text-align:center"></div></div>`).join("")+`<button class="btn" id="sv">Save cast</button>`);
+ $("sv").onclick=()=>{const a=C.map((c,i)=>({n:esc(($("n"+i).value.trim()||DEF[i][0]).slice(0,14)),e:Array.from($("e"+i).value.trim())[0]||DEF[i][1]}));try{localStorage.setItem("dq2c",JSON.stringify(a))}catch(e){}loadCast();mk();hide();cb&&cb()}}
+$("cs").onclick=()=>castEditor();
+$("mm").onclick=()=>{math=!math;hud();$("mm").textContent="🔬 Math view: "+(math?"on":"off")};
+$("nw").onclick=()=>{if(confirm("Start a new game? Progress will be lost.")){fresh();mk();hud();save()}};
+const KM={ArrowUp:"u",w:"u",ArrowDown:"d",s:"d",ArrowLeft:"l",a:"l",ArrowRight:"r",d:"r"};
+addEventListener("keydown",e=>{if(KM[e.key]){keys[KM[e.key]]=1;e.preventDefault()}});addEventListener("keyup",e=>{if(KM[e.key])keys[KM[e.key]]=0});
+document.querySelectorAll(".pad button").forEach(b=>{const k=b.dataset.k;b.onpointerdown=e=>{keys[k]=1;e.preventDefault()};["onpointerup","onpointerleave","onpointercancel"].forEach(ev=>b[ev]=()=>keys[k]=0)});
+const solid=(x,y)=>{const tx=Math.floor(x/TS),ty=Math.floor(y/TS);return!M[ty]||M[ty][tx]!=="." &&M[ty][tx]!=="L"&&M[ty][tx]!=="G"};
+const free=(x,y)=>[[-8,-8],[8,-8],[-8,8],[8,8]].every(([a,b])=>!solid(x+a,y+b));
+function step(dt){if(mode!="world")return;const dx=(keys.r?1:0)-(keys.l?1:0),dy=(keys.d?1:0)-(keys.u?1:0),sp=95*dt;
+ if(dx&&free(S.x+dx*sp,S.y))S.x+=dx*sp;if(dy&&free(S.x,S.y+dy*sp))S.y+=dy*sp;
+ for(const e of ents){if(e.dead>0){e.dead-=dt;if(e.dead<=0)e.dead=0;continue}const d=Math.hypot(S.x-e.x,S.y-e.y);
+  if(d<20&&!e.in){e.in=1;trigger(e);return}if(d>36)e.in=0}}
+function lbl(t,x,y){g.font="bold 9px system-ui";g.lineWidth=3;g.strokeStyle="#000";g.fillStyle="#fff";g.strokeText(t,x,y);g.fillText(t,x,y);g.font="22px serif"}
+function draw(){g.setTransform(dpr,0,0,dpr,0,0);g.clearRect(0,0,CW,CH);
+ for(let y=0;y<9;y++)for(let x=0;x<12;x++){const c=M[y][x];g.fillStyle=c=="T"?"#2f6f3e":c=="L"?"#8a3b3b":c=="G"?"#7b8494":(x<3?"#86cf8a":"#6fbf73");g.fillRect(x*TS,y*TS,TS,TS)}
+ g.font="22px serif";g.textAlign="center";g.textBaseline="middle";
+ ents.forEach(e=>{if(!e.dead){g.fillText(e.e,e.x,e.y);if(e.nm)lbl(e.nm,e.x,e.y+16)}});g.fillText(C[0].e,S.x,S.y);lbl(C[0].n,S.x,S.y+16)}
+let last=performance.now();(function L(n){const dt=Math.min(.05,(n-last)/1e3);last=n;step(dt);draw();requestAnimationFrame(L)})(last);
+hud();
+const intro=()=>{if(!S.f.talk&&S.lvl==1&&!S.xp)say(["📜 The village lies in ashes. The Ember Dragon took everything, and only "+C[0].e+" "+C[0].n+" can stop it.","Use the arrow pad to walk. Touch someone to talk, or touch a monster to fight.","Start by talking to the Elder in the north-west."])};
+try{localStorage.getItem("dq2c")?intro():castEditor(intro)}catch(e){intro()}
+</script></body></html>
